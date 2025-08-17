@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: propertyfinder
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-propertyfinder123}
     ports:
-      - "192.168.86.46:5432:5432"  # Bind to custom IP
+      - "127.0.0.1:5432:5432"  # Only accessible from localhost
     volumes:
       - postgres_data_prod:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -36,7 +36,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
       NODE_ENV: production
     ports:
-      - "192.168.86.46:8000:8000"  # Bind to custom IP
+      - "127.0.0.1:8000:8000"  # Only accessible from localhost
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,8 +53,8 @@ services:
     image: nginx:alpine
     container_name: propertyfinder_nginx_prod
     ports:
-      - "192.168.86.46:80:80"      # Bind to custom IP
-      - "192.168.86.46:443:443"    # Bind to custom IP
+      - "127.0.0.1:8080:80"      # Custom port 8080
+      - "127.0.0.1:8443:443"     # Custom port 8443 for HTTPS
     volumes:
       - ./nginx.production.conf:/etc/nginx/nginx.conf
       - ./ssl:/etc/nginx/ssl

@@ -1,90 +1,200 @@
-# 🏡 NJ/PA Real Estate Deal Finder
+# 🏡 PropertyFinder - NJ/PA Real Estate Deal Finder
 
-A locally hosted dashboard that helps identify real estate investment opportunities in New Jersey and Pennsylvania by analyzing multiple data sources.
+A comprehensive real estate investment dashboard that helps identify investment opportunities in New Jersey and Pennsylvania using public data sources.
 
-## 🚀 Sprint 1 Status: COMPLETE ✅
+## 🚀 **Live Demo**
 
-**Port 4000** • **Docker Infrastructure** • **Real Data Integration**
+**🌐 Production URL**: [https://properties.gursimanoor.com](https://properties.gursimanoor.com)
 
-### 🎯 Sprint 1 Features (COMPLETE)
+## ✨ **Features**
 
-- **✅ Core Stack**: Postgres + PostGIS, FastAPI, Next.js on port 4000
-- **✅ Database Schema**: Properties, permits, market metrics with PostGIS
-- **✅ Data Ingestion**: NJ permits, Zillow indices, Census ACS
-- **✅ API Endpoint**: `/api/deals` with ZIP-level metrics
-- **✅ Deals Table**: Sortable by rent growth, permit count, value growth
+- **🔍 Deal Discovery**: Find high-potential investment areas
+- **📊 Market Analytics**: Rent growth, property value trends, permit activity
+- **🗺️ Geographic Insights**: ZIP-level market analysis
+- **🔐 Secure Access**: JWT-based authentication system
+- **📱 Responsive Design**: Works on desktop and mobile
 
-## 🚀 Quick Start (Sprint 1)
+## 🏗️ **Architecture**
 
-1. **Set up environment:**
-   ```bash
-   cp env.example .env
-   # Edit .env with your API keys
-   ```
+- **Frontend**: Next.js 15 + React 18 + TypeScript + Tailwind CSS
+- **Backend**: FastAPI + PostgreSQL + PostGIS
+- **Infrastructure**: Docker + Cloudflare Argo Tunnel
+- **Authentication**: JWT tokens with secure routes
 
-2. **Start the full stack:**
-   ```bash
-   docker-compose up
-   ```
+## 🚀 **Quick Start**
 
-3. **Open the application:**
-   - Frontend: http://localhost:4000/deals
-   - API: http://localhost:8000
-   - Database: localhost:5432
+### **Prerequisites**
+- Docker and Docker Compose
+- Node.js 18+ and npm
+- Cloudflare account (for production deployment)
 
-4. **Run data ingestion (optional):**
-   ```bash
-   python scripts/sprint1-setup.py
-   ```
+### **Local Development**
+```bash
+# Clone the repository
+git clone https://github.com/Gurpreethgnis/PropertyDealFinder.git
+cd PropertyDealFinder
 
-## 📁 Project Structure
+# Start the development environment
+docker-compose up -d
+
+# Install frontend dependencies
+npm install
+
+# Start frontend development server
+npm run dev
+
+# Access the application
+# Frontend: http://localhost:4000
+# Backend API: http://localhost:8000
+```
+
+### **Production Deployment**
+```bash
+# Deploy with custom ports
+./deploy-custom-port.sh
+
+# Start Argo Tunnel
+./start-tunnel.bat
+```
+
+## 📁 **Project Structure**
 
 ```
 PropertyFinder/
-├── components/          # React components
-├── pages/              # Next.js pages
-├── lib/                # Utility functions & data sources
-├── scripts/            # Feature scripts & automation
-├── screenshots/        # UI screenshots for testing
-├── data/               # Local data storage
-├── types/              # TypeScript type definitions
-└── public/             # Static assets
+├── 📁 backend/                 # FastAPI backend
+│   ├── 📁 ingest/             # Data ingestion scripts
+│   ├── 📄 main.py             # Main API application
+│   ├── 📄 auth.py             # Authentication logic
+│   └── 📄 requirements.txt     # Python dependencies
+├── 📁 components/              # React components
+│   ├── 📄 DealsTable.tsx      # Main deals display
+│   └── 📄 ProtectedRoute.tsx  # Authentication wrapper
+├── 📁 pages/                   # Next.js pages
+│   ├── 📄 index.tsx           # Home page
+│   ├── 📄 deals.tsx           # Deals dashboard
+│   └── 📄 login.tsx           # Login page
+├── 📁 scripts/                 # Utility scripts
+│   ├── 📄 deploy-custom-port.sh    # Production deployment
+│   └── 📄 start-tunnel.bat        # Argo Tunnel starter
+├── 📁 data/                    # Data storage
+├── 📄 docker-compose.yml       # Development environment
+├── 📄 docker-compose.production.yml  # Production environment
+├── 📄 nginx.production.conf    # Production Nginx config
+└── 📄 cloudflared-tunnel.yml  # Argo Tunnel configuration
 ```
 
-## 🔧 Feature Development
+## 🔧 **Configuration**
 
-We work sprint by sprint, adding one piece at a time:
+### **Environment Variables**
+```bash
+# Frontend
+NEXT_PUBLIC_API_URL=https://properties.gursimanoor.com/api
+NODE_ENV=production
 
-1. **Permits Ingest** → Pull NJ/Philly permit data
-2. **Zillow Indices** → Market trend analysis
-3. **Flood Risk Flag** → FEMA data integration
-4. **News Pulse** → Local development news
-5. **Investment Scoring** → Multi-scenario evaluation
-6. **Dashboard UI** → Visual analytics interface
+# Backend
+DATABASE_URL=postgresql://user:pass@localhost:5432/propertyfinder
+JWT_SECRET=your-secret-key
+```
 
-## 🎨 UI Components
+### **Ports**
+- **Frontend**: 4000 (dev), 8080 (prod)
+- **Backend API**: 8000
+- **Database**: 5432
 
-- **Deals Table**: Ranked areas/properties with scores
-- **Map View**: Heatmaps of rent growth, permit activity, news buzz
-- **Underwrite Form**: Quick calculator (Cap Rate, DSCR, Flip spread)
+## 📊 **Data Sources**
 
-## 📊 Data Sources
+- **🏗️ NJ Construction Permits**: Public API for renovation activity
+- **📈 Zillow Research**: ZIP-level rent and value indices
+- **👥 Census ACS**: Income and population demographics
+- **🗺️ PostGIS**: Geospatial analysis capabilities
 
-- Public permits databases
-- Zillow Research APIs
-- Census ACS data
-- FEMA flood maps
-- Local news feeds
-- Property tax rolls
+## 🔐 **Authentication**
 
-## 🚀 Deployment
+- **Login**: `admin@propertyfinder.com` / `admin123`
+- **JWT tokens** with 30-minute expiration
+- **Protected routes** for all dashboard pages
 
-This project is designed for local hosting initially, with future plans for cloud deployment once MLS integration is added in Phase 2.
+## 🚀 **Deployment**
 
-## 📝 Development Notes
+### **Cloudflare Setup**
+1. **DNS Record**: CNAME `properties` → `[TUNNEL_ID].cfargotunnel.com`
+2. **SSL/TLS**: Full (strict) encryption mode
+3. **Pages**: Frontend deployment with custom domain
 
-- Built with Next.js + React + TypeScript
-- Uses Tailwind CSS for styling
-- Leaflet for interactive maps
-- Recharts for data visualization
-- Feature-based development approach with Git version control
+### **Argo Tunnel**
+- **Tunnel ID**: `766bafc4-59c3-40da-8c65-4a4d285f4c28`
+- **Target**: `http://localhost:8080`
+- **Domain**: `properties.gursimanoor.com`
+
+## 🧪 **Testing**
+
+```bash
+# Test backend health
+curl http://localhost:8080/health
+
+# Test API endpoints
+curl http://localhost:8080/api/health
+
+# Test authentication
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@propertyfinder.com","password":"admin123"}'
+```
+
+## 🔧 **Management Commands**
+
+```bash
+# View logs
+docker-compose -f docker-compose.production.yml logs -f
+
+# Restart services
+docker-compose -f docker-compose.production.yml restart
+
+# Stop all services
+docker-compose -f docker-compose.production.yml down
+
+# Update and redeploy
+git pull origin master
+./deploy-custom-port.sh
+```
+
+## 📈 **Roadmap**
+
+### **Phase 1 (Current)**
+- ✅ Core infrastructure and data ingestion
+- ✅ Basic deals table and authentication
+- ✅ Production deployment
+
+### **Phase 2 (Next)**
+- 🗺️ Interactive map view with heatmaps
+- 📰 News sentiment analysis
+- 🌊 Flood risk assessment
+- 📊 Advanced analytics dashboard
+
+### **Phase 3 (Future)**
+- 🔗 MLS integration for live listings
+- 🤖 Machine learning deal scoring
+- 📱 Mobile app
+- 🔔 Real-time notifications
+
+## 🤝 **Contributing**
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## 📄 **License**
+
+This project is proprietary software. All rights reserved.
+
+## 📞 **Support**
+
+For support or questions:
+- **Email**: admin@propertyfinder.com
+- **Documentation**: Check `CLOUDFLARE_DEPLOYMENT.md` for deployment help
+
+---
+
+**Built with ❤️ for real estate investors**

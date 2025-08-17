@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from typing import List, Optional
 import os
 from dotenv import load_dotenv
+from auth import authenticate_user, create_access_token, get_current_approved_user, User, Token
+import datetime
 
 # Load environment variables
 load_dotenv()
@@ -15,7 +17,7 @@ app = FastAPI(title="PropertyFinder API", version="1.0.0")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4000"],
+    allow_origins=["*"],  # In production, restrict this to your frontend domain
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,6 +28,13 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://propertyfinder:propertyfi
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 # Pydantic models
 class DealMetrics(BaseModel):
     zip_code: str
@@ -33,7 +42,7 @@ class DealMetrics(BaseModel):
     state: str
     rent_index: Optional[float] = None
     home_value_index: Optional[float] = None
-    permit_count: int = 0
+    permit_count: int
     income: Optional[float] = None
     population: Optional[int] = None
     rent_growth: Optional[float] = None
@@ -42,32 +51,50 @@ class DealMetrics(BaseModel):
 class DealsResponse(BaseModel):
     deals: List[DealMetrics]
     total: int
-    state: str
+    state: Optional[str] = None
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# Authentication endpoints
+@app.post("/api/auth/login", response_model=Token)
+async def login(user: User):
+    """Authenticate user and return JWT token"""
+    authenticated_user = authenticate_user(user.email, user.password)
+    if not authenticated_user:
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    access_token_expires = datetime.timedelta(minutes=30)
+    access_token = create_access_token(
+        data={"sub": authenticated_user.email}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
 
-@app.get("/")
-async def root():
-    return {"message": "PropertyFinder API - Sprint 1", "status": "running"}
+@app.get("/api/auth/me")
+async def get_current_user_info(current_user = Depends(get_current_approved_user)):
+    """Get current user information"""
+    return {
+        "email": current_user.email,
+        "is_active": current_user.is_active,
+        "is_approved": current_user.is_approved
+    }
 
+# Protected endpoints
 @app.get("/api/deals", response_model=DealsResponse)
 async def get_deals(
     state: Optional[str] = None,
     sort_by: str = "rent_growth",
     limit: int = 100,
-    db = Depends(get_db)
+    db = Depends(get_db),
+    current_user = Depends(get_current_approved_user)  # Require authentication
 ):
     """
     Get ZIP-level metrics for investment analysis.
     Returns rent index, home value index, permit count, income, and population.
     """
     try:
-        # Build the SQL query based on parameters
+        # Build the query
         query = """
         WITH zip_metrics AS (
             SELECT 
@@ -162,7 +189,7 @@ async def get_deals(
         result = db.execute(text(query), params)
         rows = result.fetchall()
         
-        # Convert to response model
+        # Convert to Pydantic models
         deals = []
         for row in rows:
             deal = DealMetrics(
@@ -182,11 +209,12 @@ async def get_deals(
         return DealsResponse(
             deals=deals,
             total=len(deals),
-            state=state or "ALL"
+            state=state
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        print(f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Database error")
 
 @app.get("/api/health")
 async def health_check():
@@ -196,9 +224,19 @@ async def health_check():
         db = SessionLocal()
         db.execute(text("SELECT 1"))
         db.close()
-        return {"status": "healthy", "database": "connected"}
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }
     except Exception as e:
-        return {"status": "unhealthy", "database": str(e)}
+        return {
+            "status": "unhealthy",
+            "database": "disconnected",
+            "error": str(e),
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }
 
 if __name__ == "__main__":
     import uvicorn

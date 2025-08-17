@@ -2,15 +2,15 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  experimental: {
-    appDir: false,
-  },
+  output: 'export',  // Enable static export for Cloudflare Pages
+  trailingSlash: true,  // Required for static export
   images: {
     domains: ['localhost'],
+    unoptimized: true,  // Required for static export
   },
-  // Sprint 1: Configure for port 4000
+  // Environment variables for the application
   env: {
-    PORT: 4000,
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   },
 }
 

@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with PostGIS extension
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: propertyfinder_postgres_prod
+    environment:
+      POSTGRES_DB: propertyfinder
+      POSTGRES_USER: propertyfinder
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-propertyfinder123}
+    ports:
+      - "127.0.0.1:5432:5432"  # Only accessible from localhost
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U propertyfinder"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - propertyfinder_prod_network
+
+  # FastAPI backend
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: propertyfinder_api_prod
+    environment:
+      DATABASE_URL: postgresql://propertyfinder:${POSTGRES_PASSWORD:-propertyfinder123}@postgres:5432/propertyfinder
+      ZILLOW_API_KEY: ${ZILLOW_API_KEY:-mock_key}
+      CENSUS_API_KEY: ${CENSUS_API_KEY:-mock_key}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-this-in-production}
+      NODE_ENV: production
+    ports:
+      - "127.0.0.1:8000:8000"  # Only accessible from localhost
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+    command: uvicorn main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    networks:
+      - propertyfinder_prod_network
+
+  # Nginx reverse proxy for Cloudflare
+  nginx:
+    image: nginx:alpine
+    container_name: propertyfinder_nginx_prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.production.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - propertyfinder_prod_network
+
+networks:
+  propertyfinder_prod_network:
+    driver: bridge
+
+volumes:
+  postgres_data_prod:

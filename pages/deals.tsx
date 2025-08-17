@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import Head from 'next/head'
+import ProtectedRoute from '../components/ProtectedRoute'
 
 interface DealMetrics {
   zip_code: string
@@ -20,16 +21,23 @@ interface DealsResponse {
   state: string
 }
 
-export default function DealsPage() {
+function DealsPageContent() {
   const [deals, setDeals] = useState<DealMetrics[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<string>('rent_growth')
   const [stateFilter, setStateFilter] = useState<string>('')
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
-    fetchDeals()
-  }, [sortBy, stateFilter])
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (mounted) {
+      fetchDeals()
+    }
+  }, [mounted, sortBy, stateFilter])
 
   const fetchDeals = async () => {
     try {
@@ -43,7 +51,29 @@ export default function DealsPage() {
         params.append('state', stateFilter)
       }
 
-      const response = await fetch(`http://localhost:8000/api/deals?${params}`)
+      // Get the JWT token
+      const token = localStorage.getItem('auth_token')
+      if (!token) {
+        throw new Error('Authentication required')
+      }
+
+      // Use environment variable or fallback to localhost
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+      const response = await fetch(`${apiUrl}/api/deals?${params}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      if (response.status === 401) {
+        // Token expired or invalid, redirect to login
+        localStorage.removeItem('auth_token')
+        localStorage.removeItem('user_email')
+        window.location.href = '/login'
+        return
+      }
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
@@ -84,6 +114,11 @@ export default function DealsPage() {
     if (value > 5) return 'text-green-600'
     if (value > 0) return 'text-blue-600'
     return 'text-red-600'
+  }
+
+  // Don't render until mounted to prevent hydration mismatch
+  if (!mounted) {
+    return null
   }
 
   if (loading) {
@@ -207,7 +242,7 @@ export default function DealsPage() {
                 </div>
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Total Permits</p>
-                  <p className="text-2xl font-bold text-gray-900">
+                  <p className="text-2xl font-medium text-gray-900">
                     {deals.reduce((sum, d) => sum + d.permit_count, 0)}
                   </p>
                 </div>
@@ -299,7 +334,7 @@ export default function DealsPage() {
                             <span className="ml-2 font-medium">{formatCurrency(deal.income)}</span>
                           </div>
                           <div className="text-sm">
-                            <span className="text-gray-500">Pop:</span>
+                            <span className="text-sm text-gray-500">Pop:</span>
                             <span className="ml-2 font-medium">{formatNumber(deal.population)}</span>
                           </div>
                         </div>
@@ -313,10 +348,18 @@ export default function DealsPage() {
 
           {/* Footer */}
           <div className="mt-6 text-center text-sm text-gray-500">
-            <p>Data refreshed from FastAPI backend • {new Date().toLocaleString()}</p>
+            <p>Data refreshed from FastAPI backend • {mounted && new Date().toLocaleString()}</p>
           </div>
         </div>
       </div>
     </>
+  )
+}
+
+export default function DealsPage() {
+  return (
+    <ProtectedRoute>
+      <DealsPageContent />
+    </ProtectedRoute>
   )
 }

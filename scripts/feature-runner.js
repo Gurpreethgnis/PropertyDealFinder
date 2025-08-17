@@ -34,6 +34,11 @@ const FEATURES = {
     description: 'Main dashboard interface',
     script: 'npm run dev',
     dependencies: []
+  },
+  'demo': {
+    description: 'Run system demo with mock data',
+    script: 'scripts/demo.js',
+    dependencies: []
   }
 };
 

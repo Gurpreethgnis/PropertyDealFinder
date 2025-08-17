@@ -8,6 +8,10 @@ const nextConfig = {
   images: {
     domains: ['localhost'],
   },
+  // Sprint 1: Configure for port 4000
+  env: {
+    PORT: 4000,
+  },
 }
 
 module.exports = nextConfig

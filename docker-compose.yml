@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with PostGIS extension
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: propertyfinder_postgres
+    environment:
+      POSTGRES_DB: propertyfinder
+      POSTGRES_USER: propertyfinder
+      POSTGRES_PASSWORD: propertyfinder123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U propertyfinder"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI backend
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: propertyfinder_api
+    environment:
+      DATABASE_URL: postgresql://propertyfinder:propertyfinder123@postgres:5432/propertyfinder
+      ZILLOW_API_KEY: ${ZILLOW_API_KEY}
+      CENSUS_API_KEY: ${CENSUS_API_KEY}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - ./data:/app/data
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Next.js frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: propertyfinder_frontend
+    ports:
+      - "4000:4000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - api
+    command: npm run dev
+
+volumes:
+  postgres_data:

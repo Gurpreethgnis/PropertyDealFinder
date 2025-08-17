@@ -2,30 +2,39 @@
 
 A locally hosted dashboard that helps identify real estate investment opportunities in New Jersey and Pennsylvania by analyzing multiple data sources.
 
-## 🎯 Phase 1 Features
+## 🚀 Sprint 1 Status: COMPLETE ✅
 
-- **Permits Data**: NJ & Philly renovation/construction permits
-- **Market Indices**: Zillow Research ZIP-level rent & value trends
-- **Demographics**: Census ACS income/population shifts
-- **Risk Assessment**: FEMA flood risk data
-- **News Analysis**: Local development and real estate news feeds
-- **Investment Scoring**: Multi-scenario deal evaluation system
+**Port 4000** • **Docker Infrastructure** • **Real Data Integration**
 
-## 🚀 Quick Start
+### 🎯 Sprint 1 Features (COMPLETE)
 
-1. **Install dependencies:**
+- **✅ Core Stack**: Postgres + PostGIS, FastAPI, Next.js on port 4000
+- **✅ Database Schema**: Properties, permits, market metrics with PostGIS
+- **✅ Data Ingestion**: NJ permits, Zillow indices, Census ACS
+- **✅ API Endpoint**: `/api/deals` with ZIP-level metrics
+- **✅ Deals Table**: Sortable by rent growth, permit count, value growth
+
+## 🚀 Quick Start (Sprint 1)
+
+1. **Set up environment:**
    ```bash
-   npm install
+   cp env.example .env
+   # Edit .env with your API keys
    ```
 
-2. **Run development server:**
+2. **Start the full stack:**
    ```bash
-   npm run dev
+   docker-compose up
    ```
 
-3. **Run specific features:**
+3. **Open the application:**
+   - Frontend: http://localhost:4000/deals
+   - API: http://localhost:8000
+   - Database: localhost:5432
+
+4. **Run data ingestion (optional):**
    ```bash
-   npm run feature -- <feature-name>
+   python scripts/sprint1-setup.py
    ```
 
 ## 📁 Project Structure

@@ -1,0 +1,12 @@
+tunnel: faef6594-a266-401d-9c9c-a2f4eb80b5dc
+credentials-file: C:\Users\gurpr\.cloudflared\faef6594-a266-401d-9c9c-a2f4eb80b5dc.json
+
+ingress:
+  # PropertyFinder API and frontend
+  - hostname: properties.gursimanoor.com
+    service: http://192.168.86.46:8000
+    originRequest:
+      noTLSVerify: true
+  
+  # Catch-all rule for unmatched hostnames
+  - service: http_status:404

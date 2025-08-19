@@ -7,6 +7,6 @@ echo.
 echo Press Ctrl+C to stop the tunnel
 echo.
 
-cloudflared tunnel run --config cloudflared-tunnel.yml propertyfinder
+cloudflared tunnel run --config deployment\cloudflared-tunnel.yml propertyfinder
 
 pause

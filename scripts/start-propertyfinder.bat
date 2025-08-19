@@ -6,20 +6,26 @@ echo.
 echo Starting PropertyFinder services...
 echo.
 
+REM Change to the project root directory
+cd /d "%~dp0.."
+
 echo 1. Starting Docker services...
-docker-compose -f docker-compose.production.yml up -d
+docker-compose -f deployment/docker-compose.production.yml up -d
 
 echo.
 echo 2. Waiting for services to start...
-timeout /t 15 /nobreak >nul
+ping -n 16 127.0.0.1 >nul
 
 echo.
 echo 3. Starting Argo Tunnel...
-start /B cloudflared tunnel run --config cloudflared-tunnel.yml propertyfinder
+echo IMPORTANT: A new window will open for the tunnel
+echo Keep that window open to maintain the connection!
+echo.
+start scripts\start-tunnel-manual.bat
 
 echo.
 echo 4. Waiting for tunnel to connect...
-timeout /t 10 /nobreak >nul
+ping -n 11 127.0.0.1 >nul
 
 echo.
 echo ✅ PropertyFinder is starting up!
@@ -39,6 +45,8 @@ echo.
 echo 🎉 PropertyFinder is now running!
 echo.
 echo To stop services:
-echo    docker-compose -f docker-compose.production.yml down
+echo    docker-compose -f deployment/docker-compose.production.yml down
+echo.
+echo REMEMBER: Keep the tunnel window open!
 echo.
 pause

@@ -1,0 +1,6 @@
+tunnel: faef6594-a266-401d-9c9c-a2f4eb80b5dc
+credentials-file: C:\Users\gurpr\.cloudflared\faef6594-a266-401d-9c9c-a2f4eb80b5dc.json
+protocol: http2
+ingress:
+  - service: http://localhost:8080
+  - service: http_status:404

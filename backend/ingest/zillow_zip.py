@@ -1,155 +1,280 @@
 #!/usr/bin/env python3
 """
-Zillow ZIP-Level Indices Ingestion Job
-Loads ZHVI (home value) and ZORI (rent) indices by ZIP into market_metrics table.
+Zillow Research Indices Data Ingestion
+
+Downloads and processes Zillow ZHVI (Home Value) and ZORI (Rent) data for NJ/PA ZIP codes.
 """
 
-import os
-import sys
-import requests
+import asyncio
+import aiohttp
+import asyncpg
 import pandas as pd
+import os
+import logging
 from datetime import datetime, timedelta
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
+from typing import List, Dict, Any
+import tempfile
+import zipfile
+import io
 
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-load_dotenv()
+# Configuration
+ZILLOW_BASE_URL = "https://files.zillowstatic.com/research/public_csvs"
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://propertyfinder:propertyfinder123@localhost:5432/propertyfinder")
 
-class ZillowZipIngest:
-    def __init__(self):
-        self.database_url = os.getenv("DATABASE_URL", "postgresql://propertyfinder:propertyfinder123@localhost:5432/propertyfinder")
-        self.engine = create_engine(self.database_url)
-        self.zillow_api_key = os.getenv("ZILLOW_API_KEY")
+# Zillow data file URLs
+ZHVI_URL = f"{ZILLOW_BASE_URL}/zhvi/Zip_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv"
+ZORI_URL = f"{ZILLOW_BASE_URL}/zori/Zip_zori_sm_month.csv"
+
+# NJ and PA ZIP codes (we'll filter to these states)
+NJ_PA_STATES = {'NJ', 'PA'}
+
+async def download_zillow_data(session: aiohttp.ClientSession, url: str) -> pd.DataFrame:
+    """Download Zillow CSV data and return as pandas DataFrame."""
+    
+    try:
+        logger.info(f"Downloading data from: {url}")
         
-        # Zillow Research API endpoints
-        self.zhvi_url = "https://api.bridgedataoutput.com/api/v2/zestimates"
-        self.zori_url = "https://api.bridgedataoutput.com/api/v2/rentals"
-        
-        # NJ/PA ZIP codes to fetch data for
-        self.target_zips = [
-            '07302', '07102', '08540',  # NJ
-            '19123', '19147'            # PA
-        ]
-        
-    def fetch_zillow_data(self, zip_codes, metric_type):
-        """Fetch Zillow data for specified ZIP codes"""
-        print(f"🔍 Fetching Zillow {metric_type} data for {len(zip_codes)} ZIP codes...")
-        
-        if not self.zillow_api_key:
-            print("⚠️ No Zillow API key provided. Using mock data.")
-            return self.generate_mock_data(zip_codes, metric_type)
-        
+        async with session.get(url) as response:
+            if response.status != 200:
+                logger.error(f"Failed to download {url}: {response.status}")
+                return pd.DataFrame()
+            
+            # Read CSV content
+            content = await response.text()
+            df = pd.read_csv(io.StringIO(content))
+            
+            logger.info(f"Downloaded {len(df)} rows from {url}")
+            return df
+            
+    except Exception as e:
+        logger.error(f"Error downloading {url}: {e}")
+        return pd.DataFrame()
+
+def filter_nj_pa_data(df: pd.DataFrame, state_col: str = 'State') -> pd.DataFrame:
+    """Filter DataFrame to only include NJ and PA data."""
+    
+    if state_col not in df.columns:
+        logger.warning(f"State column '{state_col}' not found in data")
+        return df
+    
+    filtered = df[df[state_col].isin(NJ_PA_STATES)]
+    logger.info(f"Filtered to {len(filtered)} NJ/PA rows")
+    return filtered
+
+def process_zhvi_data(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Process ZHVI (Home Value) data into standardized format."""
+    
+    if df.empty:
+        return []
+    
+    # Find the most recent date column (last column that looks like a date)
+    date_columns = []
+    for col in df.columns:
+        if col.startswith('20') and len(col) == 7:  # Format: 2024-01
+            date_columns.append(col)
+    
+    if not date_columns:
+        logger.warning("No date columns found in ZHVI data")
+        return []
+    
+    # Use the most recent date
+    latest_date = max(date_columns)
+    logger.info(f"Processing ZHVI data for date: {latest_date}")
+    
+    processed_data = []
+    
+    for _, row in df.iterrows():
         try:
-            # For now, we'll use mock data since Zillow API requires special access
-            # In production, this would make actual API calls
-            print("ℹ️ Zillow API integration requires special access. Using mock data.")
-            return self.generate_mock_data(zip_codes, metric_type)
+            zip_code = str(row.get('RegionName', '')).zfill(5)
+            state = row.get('State', '')
+            metro = row.get('Metro', '')
+            home_value = row.get(latest_date, None)
+            
+            if not zip_code or zip_code == '00000' or pd.isna(home_value):
+                continue
+            
+            # Parse the date
+            try:
+                metric_date = datetime.strptime(latest_date, '%Y-%m')
+            except ValueError:
+                metric_date = datetime.now()
+            
+            processed_data.append({
+                'zip_code': zip_code,
+                'state': state,
+                'metric_date': metric_date,
+                'metric_type': 'zillow_zhvi',
+                'metric_value': float(home_value),
+                'metric_unit': 'USD',
+                'source': 'zillow_research',
+                'metadata': {
+                    'metro': metro,
+                    'data_date': latest_date
+                }
+            })
             
         except Exception as e:
-            print(f"❌ Error fetching Zillow data: {e}")
-            return self.generate_mock_data(zip_codes, metric_type)
+            logger.debug(f"Error processing ZHVI row: {e}")
+            continue
     
-    def generate_mock_data(self, zip_codes, metric_type):
-        """Generate realistic mock data for development"""
-        print("🎭 Generating mock Zillow data...")
-        
-        mock_data = []
-        base_date = datetime.now()
-        
-        for zip_code in zip_codes:
-            # Generate 12 months of data for trend analysis
-            for i in range(12):
-                date = base_date - timedelta(days=30*i)
-                
-                if metric_type == 'zillow_zhvi':
-                    # Home value index (realistic NJ/PA values)
-                    base_value = 350000 if zip_code.startswith('07') else 280000  # NJ vs PA
-                    trend_factor = 1 + (i * 0.02)  # 2% monthly growth
-                    value = base_value * trend_factor
-                    
-                    mock_data.append({
-                        'zip_code': zip_code,
-                        'metric_date': date.strftime('%Y-%m-%d'),
-                        'metric_type': 'zillow_zhvi',
-                        'metric_value': round(value, 2),
-                        'metric_unit': 'dollars',
-                        'source': 'Zillow Research (Mock)'
-                    })
-                    
-                elif metric_type == 'zillow_zori':
-                    # Rent index (realistic NJ/PA values)
-                    base_rent = 2800 if zip_code.startswith('07') else 2200  # NJ vs PA
-                    trend_factor = 1 + (i * 0.015)  # 1.5% monthly growth
-                    rent = base_rent * trend_factor
-                    
-                    mock_data.append({
-                        'zip_code': zip_code,
-                        'metric_date': date.strftime('%Y-%m-%d'),
-                        'metric_type': 'zillow_zori',
-                        'metric_value': round(rent, 2),
-                        'metric_unit': 'dollars',
-                        'source': 'Zillow Research (Mock)'
-                    })
-        
-        print(f"✅ Generated {len(mock_data)} mock data points")
-        return mock_data
+    return processed_data
+
+def process_zori_data(df: pd.DataFrame) -> List[Dict[str, Any]]:
+    """Process ZORI (Rent) data into standardized format."""
     
-    def load_to_database(self, data, metric_type):
-        """Load Zillow data into the database"""
-        print(f"💾 Loading {metric_type} data into database...")
-        
+    if df.empty:
+        return []
+    
+    # Find the most recent date column
+    date_columns = []
+    for col in df.columns:
+        if col.startswith('20') and len(col) == 7:  # Format: 2024-01
+            date_columns.append(col)
+    
+    if not date_columns:
+        logger.warning("No date columns found in ZORI data")
+        return []
+    
+    # Use the most recent date
+    latest_date = max(date_columns)
+    logger.info(f"Processing ZORI data for date: {latest_date}")
+    
+    processed_data = []
+    
+    for _, row in df.iterrows():
         try:
-            with self.engine.connect() as conn:
-                # Clear existing data for this metric type
-                delete_query = text("DELETE FROM market_metrics WHERE metric_type = :metric_type")
-                conn.execute(delete_query, {'metric_type': metric_type})
-                conn.commit()
-                
-                # Insert new data
-                for record in data:
-                    insert_query = text("""
-                        INSERT INTO market_metrics (
-                            zip_code, state, metric_date, metric_type, 
-                            metric_value, metric_unit, source
-                        ) VALUES (
-                            :zip_code, 
-                            (SELECT state FROM properties WHERE zip_code = :zip_code LIMIT 1),
-                            :metric_date, :metric_type, :metric_value, :metric_unit, :source
-                        )
-                    """)
-                    
-                    conn.execute(insert_query, record)
-                
-                conn.commit()
-                print(f"✅ Successfully loaded {len(data)} {metric_type} records into database")
-                
-        except Exception as e:
-            print(f"❌ Error loading to database: {e}")
-            raise
-    
-    def run(self):
-        """Main execution method"""
-        print("🚀 Starting Zillow ZIP-Level Indices Ingestion...")
-        
-        try:
-            # Fetch and load ZHVI (home value) data
-            zhvi_data = self.fetch_zillow_data(self.target_zips, 'zillow_zhvi')
-            if zhvi_data:
-                self.load_to_database(zhvi_data, 'zillow_zhvi')
+            zip_code = str(row.get('RegionName', '')).zfill(5)
+            state = row.get('State', '')
+            metro = row.get('Metro', '')
+            rent_value = row.get(latest_date, None)
             
-            # Fetch and load ZORI (rent) data
-            zori_data = self.fetch_zillow_data(self.target_zips, 'zillow_zori')
-            if zori_data:
-                self.load_to_database(zori_data, 'zillow_zori')
+            if not zip_code or zip_code == '00000' or pd.isna(rent_value):
+                continue
             
-            print("🎉 Zillow ZIP-Level Indices ingestion completed successfully!")
+            # Parse the date
+            try:
+                metric_date = datetime.strptime(latest_date, '%Y-%m')
+            except ValueError:
+                metric_date = datetime.now()
+            
+            processed_data.append({
+                'zip_code': zip_code,
+                'state': state,
+                'metric_date': metric_date,
+                'metric_type': 'zillow_zori',
+                'metric_value': float(rent_value),
+                'metric_unit': 'USD',
+                'source': 'zillow_research',
+                'metadata': {
+                    'metro': metro,
+                    'data_date': latest_date
+                }
+            })
             
         except Exception as e:
-            print(f"💥 Zillow ZIP-Level Indices ingestion failed: {e}")
-            sys.exit(1)
+            logger.debug(f"Error processing ZORI row: {e}")
+            continue
+    
+    return processed_data
+
+async def upsert_market_metrics(conn: asyncpg.Connection, metrics: List[Dict[str, Any]]) -> int:
+    """Upsert market metrics data into the database."""
+    
+    if not metrics:
+        return 0
+    
+    # Prepare the upsert query
+    upsert_query = """
+    INSERT INTO market_metrics (
+        zip_code, state, metric_date, metric_type, metric_value, 
+        metric_unit, source, created_at, updated_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    ON CONFLICT (zip_code, metric_date, metric_type) DO UPDATE SET
+        metric_value = EXCLUDED.metric_value,
+        metric_unit = EXCLUDED.metric_unit,
+        source = EXCLUDED.source,
+        updated_at = CURRENT_TIMESTAMP
+    """
+    
+    # Process and insert metrics
+    inserted_count = 0
+    for metric in metrics:
+        try:
+            # Insert into database
+            await conn.execute(
+                upsert_query,
+                metric['zip_code'],
+                metric['state'],
+                metric['metric_date'],
+                metric['metric_type'],
+                metric['metric_value'],
+                metric['metric_unit'],
+                metric['source']
+            )
+            
+            inserted_count += 1
+            
+        except Exception as e:
+            logger.error(f"Error processing metric for {metric.get('zip_code', 'UNKNOWN')}: {e}")
+            continue
+    
+    return inserted_count
+
+async def main():
+    """Main ingestion function."""
+    logger.info("Starting Zillow data ingestion...")
+    
+    # Create HTTP session
+    async with aiohttp.ClientSession() as session:
+        # Download ZHVI data
+        logger.info("Downloading ZHVI (Home Value) data...")
+        zhvi_df = await download_zillow_data(session, ZHVI_URL)
+        
+        # Download ZORI data
+        logger.info("Downloading ZORI (Rent) data...")
+        zori_df = await download_zillow_data(session, ZORI_URL)
+        
+        if zhvi_df.empty and zori_df.empty:
+            logger.error("No Zillow data retrieved")
+            return
+        
+        # Filter to NJ/PA data
+        zhvi_nj_pa = filter_nj_pa_data(zhvi_df)
+        zori_nj_pa = filter_nj_pa_data(zori_df)
+        
+        # Process data
+        zhvi_metrics = process_zhvi_data(zhvi_nj_pa)
+        zori_metrics = process_zori_data(zori_nj_pa)
+        
+        all_metrics = zhvi_metrics + zori_metrics
+        
+        if not all_metrics:
+            logger.error("No valid metrics data to process")
+            return
+        
+        logger.info(f"Processed {len(zhvi_metrics)} ZHVI metrics and {len(zori_metrics)} ZORI metrics")
+        
+        # Connect to database
+        try:
+            conn = await asyncpg.connect(DATABASE_URL)
+            logger.info("Connected to database")
+            
+            # Upsert metrics
+            inserted_count = await upsert_market_metrics(conn, all_metrics)
+            logger.info(f"Successfully processed {inserted_count} market metrics")
+            
+            # Close connection
+            await conn.close()
+            
+        except Exception as e:
+            logger.error(f"Database error: {e}")
+            return
+    
+    logger.info("Zillow data ingestion completed")
 
 if __name__ == "__main__":
-    ingester = ZillowZipIngest()
-    ingester.run()
+    asyncio.run(main())
